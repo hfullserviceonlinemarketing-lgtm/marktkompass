@@ -2534,43 +2534,42 @@ function calcSwingScore(data) {
 
   score = Math.max(5, Math.min(95, Math.round(score)));
 
-  // --- Signal classification ---
-  var action, actionClass;
-  if (score >= 68 && bullSignals >= 2) {
-    action = 'KAUFEN';  actionClass = 'buy';
-  } else if (score <= 35 && bearSignals >= 2) {
-    action = 'WARTEN';  actionClass = 'bear';
-  } else if (score >= 55) {
-    action = 'BEOBACHTEN'; actionClass = 'watch';
-  } else {
-    action = 'NEUTRAL'; actionClass = 'neutral';
-  }
-
-  // --- Entry / Stop-Loss / Target (ATR-based) ---
+  // --- Entry / Stop-Loss / Target (ATR-based) — calculated FIRST ---
   var entry = null, stop = null, target1 = null, target2 = null, riskReward = null, tradeDir = null;
   if (atr && last > 0) {
-    if (actionClass === 'buy' || actionClass === 'watch') {
-      // Long setup
-      tradeDir = 'LONG';
-      entry    = last;
-      stop     = +(last - 1.5 * atr).toFixed(4);
-      target1  = +(last + 2.0 * atr).toFixed(4);
-      target2  = +(last + 3.5 * atr).toFixed(4);
-      riskReward = ((target1 - entry) / (entry - stop)).toFixed(1);
-    } else if (actionClass === 'bear') {
-      // Short / Exit setup
-      tradeDir = 'SHORT';
-      entry    = last;
-      stop     = +(last + 1.5 * atr).toFixed(4);
-      target1  = +(last - 2.0 * atr).toFixed(4);
-      target2  = +(last - 3.5 * atr).toFixed(4);
-      riskReward = ((entry - target1) / (stop - entry)).toFixed(1);
-    } else {
-      // Neutral — show support/resistance levels only
-      tradeDir = 'INFO';
-      stop     = +(last - 1.5 * atr).toFixed(4);
-      target1  = +(last + 2.0 * atr).toFixed(4);
+    // Always calculate long levels for scoring
+    entry    = last;
+    stop     = +(last - 1.5 * atr).toFixed(4);
+    target1  = +(last + 2.0 * atr).toFixed(4);
+    target2  = +(last + 3.5 * atr).toFixed(4);
+    riskReward = +((target1 - entry) / (entry - stop)).toFixed(1);
+    tradeDir = 'LONG';
+  }
+
+  // --- Signal classification — RR >= 2.0 required for KAUFEN ---
+  var MIN_RR = 2.0;
+  var rrOk = riskReward && riskReward >= MIN_RR;
+  var action, actionClass;
+  if (score >= 68 && bullSignals >= 2 && rrOk) {
+    action = 'KAUFEN';      actionClass = 'buy';
+  } else if (score >= 68 && bullSignals >= 2 && !rrOk) {
+    // Good score but RR too low → downgrade to BEOBACHTEN
+    action = 'BEOBACHTEN';  actionClass = 'watch';
+  } else if (score <= 35 && bearSignals >= 2) {
+    action = 'WARTEN';      actionClass = 'bear';
+    tradeDir = 'SHORT';
+    if (atr && last > 0) {
+      stop    = +(last + 1.5 * atr).toFixed(4);
+      target1 = +(last - 2.0 * atr).toFixed(4);
+      target2 = +(last - 3.5 * atr).toFixed(4);
+      riskReward = +((entry - target1) / (stop - entry)).toFixed(1);
     }
+  } else if (score >= 55) {
+    action = 'BEOBACHTEN';  actionClass = 'watch';
+  } else {
+    action = 'NEUTRAL';     actionClass = 'neutral';
+    tradeDir = 'INFO';
+    entry = null; target2 = null; riskReward = null;
   }
 
   // --- 52W context ---
@@ -2578,12 +2577,17 @@ function calcSwingScore(data) {
   var lo52 = Math.min.apply(null, closes.slice(-252));
   var pos52 = hi52 > lo52 ? ((last - lo52) / (hi52 - lo52) * 100).toFixed(0) : 50;
 
+  // Add RR note to signals if it was the limiting factor
+  if (score >= 68 && bullSignals >= 2 && !rrOk && riskReward) {
+    signals.unshift({t:'RR '+riskReward+':1', v:'Unter 2:1 — warte auf besseren Einstieg', bull:null});
+  }
+
   return {
     score: score, action: action, actionClass: actionClass,
     signals: signals, bullSignals: bullSignals, bearSignals: bearSignals,
     rsi: rsi, macd: macd, bb: bb, atr: atr, ema20: ema20, ema50: ema50,
     entry: entry, stop: stop, target1: target1, target2: target2,
-    riskReward: riskReward, tradeDir: tradeDir,
+    riskReward: riskReward, tradeDir: tradeDir, rrOk: rrOk,
     price: last, change: ((last-prev)/prev*100),
     hi52: hi52, lo52: lo52, pos52: pos52
   };
