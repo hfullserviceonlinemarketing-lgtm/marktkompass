@@ -411,6 +411,19 @@ header{display:flex;align-items:center;gap:12px;margin-bottom:36px;padding-botto
       <option value="Rohstoffe">🏅 Rohstoffe</option>
       <option value="Krypto">₿ Krypto</option>
     </select>
+    <select class="scan-filter" id="rrFilter" onchange="applyScanFilter()">
+      <option value="0">Alle RR</option>
+      <option value="1.5">RR ≥ 1.5:1</option>
+      <option value="2" selected>RR ≥ 2:1 ✓</option>
+      <option value="2.5">RR ≥ 2.5:1</option>
+      <option value="3">RR ≥ 3:1</option>
+    </select>
+    <select class="scan-filter" id="actionFilter" onchange="applyScanFilter()">
+      <option value="Alle">Alle Signale</option>
+      <option value="buy">🟢 Nur KAUFEN</option>
+      <option value="watch">🟡 KAUFEN + BEOBACHTEN</option>
+      <option value="bear">🔴 Nur WARTEN</option>
+    </select>
     <button class="scan-btn" onclick="initScanner()">▶ Scan starten</button>
     <button class="scan-btn stop" onclick="stopScan()">■ Stop</button>
     <div class="scan-legend">
@@ -2748,6 +2761,7 @@ function sortScanGrid() {
     return sb - sa;
   });
   cards.forEach(function(card) { grid.appendChild(card); });
+  setTimeout(applyScanFilter, 50);
 }
 
 function stopScan() {
@@ -2977,6 +2991,58 @@ function runSilentScan() {
   next();
 }
 
+
+
+function applyScanFilter() {
+  var minRR  = parseFloat(document.getElementById('rrFilter').value || '0');
+  var action = document.getElementById('actionFilter').value || 'Alle';
+  var grid   = document.getElementById('scannerGrid');
+  if (!grid) return;
+
+  var hidden = 0, shown = 0;
+  Array.from(grid.children).forEach(function(card) {
+    var score = parseInt(card.getAttribute('data-score') || '0');
+    if (!score) { card.style.display = ''; return; } // no-data cards always show
+
+    // RR filter
+    var rrOk = true;
+    if (minRR > 0) {
+      var rrEl = card.querySelector('.sc-lv-val.t1'); // check if levels exist
+      // Get RR from the card text
+      var rrText = card.innerHTML.match(/RR\s*([\d.]+):1/);
+      var cardRR = rrText ? parseFloat(rrText[1]) : 0;
+      rrOk = cardRR >= minRR || cardRR === 0 && minRR === 0;
+      // If no RR calculated, hide if RR filter active
+      if (minRR > 0 && cardRR === 0) rrOk = false;
+    }
+
+    // Action filter
+    var actionOk = true;
+    if (action === 'buy')   actionOk = card.className.indexOf('buy') >= 0;
+    if (action === 'watch') actionOk = card.className.indexOf('buy') >= 0 || card.className.indexOf('watch') >= 0;
+    if (action === 'bear')  actionOk = card.className.indexOf('bear') >= 0;
+
+    var visible = rrOk && actionOk;
+    card.style.display = visible ? '' : 'none';
+    if (visible) shown++; else hidden++;
+  });
+
+  // Update summary
+  var info = document.getElementById('filterInfo');
+  if (!info) {
+    info = document.createElement('div');
+    info.id = 'filterInfo';
+    info.style.cssText = 'font-size:11px;font-family:var(--font-mono);color:var(--muted);margin-bottom:8px';
+    grid.parentNode.insertBefore(info, grid);
+  }
+  if (hidden > 0) {
+    info.textContent = shown + ' Signale angezeigt · ' + hidden + ' gefiltert (RR < ' + minRR + ':1 oder Signal-Filter)';
+    info.style.color = '#f5a623';
+  } else {
+    info.textContent = shown + ' Signale · Kein Filter aktiv';
+    info.style.color = 'var(--muted)';
+  }
+}
 
 // Boot
 loadStoredKey();
