@@ -1392,11 +1392,20 @@ function loadStoredKey() {
   try { k=localStorage.getItem('mk_key')||''; ai=localStorage.getItem('mk_ai')||'none'; } catch(e) {}
   if (!k) { try { k=sessionStorage.getItem('mk_key')||''; ai=sessionStorage.getItem('mk_ai')||'none'; } catch(e) {} }
   if (k && k.length > 5) {
-    ACTIVE_KEY=k; ACTIVE_AI=ai;
-    document.getElementById('apiKeyInp').value=k;
-    var msg=document.getElementById('keymsg');
-    msg.style.color='#3dffa0';
-    msg.textContent=(ai==='gemini'?'Gemini':'Claude')+' aktiv';
+    ACTIVE_KEY = k; ACTIVE_AI = ai;
+    try { document.getElementById('apiKeyInp').value = k; } catch(e) {}
+    try {
+      var msg = document.getElementById('keymsg');
+      msg.style.color = '#3dffa0';
+      msg.textContent = (ai==='gemini'?'Gemini':'Claude') + ' aktiv ✓';
+    } catch(e) {}
+    // Hide keybar since key is already set
+    try {
+      document.getElementById('keybar').style.borderColor = 'rgba(61,255,160,.2)';
+    } catch(e) {}
+    console.log('Key loaded:', ai, 'prefix:', k.substring(0,8));
+  } else {
+    console.log('No key in storage');
   }
 }
 
@@ -1485,16 +1494,16 @@ function testGemMod(key,mods,i,msg) {
 // AI ANALYSIS — Claude + Gemini
 // ═══════════════════════════════════════════════════
 async function getAIAnalysis(name, type, symbol, metrics) {
-  // Always read fresh from storage to handle page reload
-  if (!ACTIVE_KEY || ACTIVE_KEY.length < 5) {
-    try { ACTIVE_KEY = localStorage.getItem('mk_key') || ''; } catch(e) {}
-    if (!ACTIVE_KEY) { try { ACTIVE_KEY = sessionStorage.getItem('mk_key') || ''; } catch(e) {} }
-    if (!ACTIVE_KEY) { try { ACTIVE_KEY = sessionStorage.getItem('mk_key') || ''; } catch(e) {} }
-    if (ACTIVE_KEY && !ACTIVE_AI || ACTIVE_AI === 'none') {
-      ACTIVE_AI = ACTIVE_KEY.indexOf('AIza')===0 ? 'gemini' : 'claude';
+  // Always read fresh — covers page reload race condition
+  var key = ACTIVE_KEY;
+  if (!key || key.length < 5) {
+    try { key = localStorage.getItem('mk_key') || ''; } catch(e) {}
+    if (!key) { try { key = sessionStorage.getItem('mk_key') || ''; } catch(e) {} }
+    if (key && key.length > 5) {
+      ACTIVE_KEY = key;
+      ACTIVE_AI = key.indexOf('AIza')===0 ? 'gemini' : 'claude';
     }
   }
-  var key = ACTIVE_KEY;
   console.log('getAIAnalysis called. ACTIVE_KEY length:', ACTIVE_KEY ? ACTIVE_KEY.length : 0, 'key:', key ? key.substring(0,8) : 'EMPTY');
   if (!key || key.length < 5) {
     console.log('RETURNING NULL - no key. Trying storage...');
@@ -3048,12 +3057,20 @@ function applyScanFilter() {
   }
 }
 
-// Boot
-loadStoredKey();
-loadTDKey();
-loadWatchlist();
-loadAlertHistory();
-requestNotificationPermission();
+// Boot — wait for DOM to be fully ready
+function bootApp() {
+  loadStoredKey();
+  loadTDKey();
+  loadWatchlist();
+  loadAlertHistory();
+  requestNotificationPermission();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootApp);
+} else {
+  bootApp();
+}
 
 </script>
 </body>
